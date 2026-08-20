@@ -13,6 +13,64 @@
 #include "utils/amxx_utils.h"
 #include "utils/TraceLog.h"
 
+#ifdef LINUX
+#include <openssl/crypto.h>
+#include <mutex>
+#include <memory>
+#include <vector>
+
+namespace
+{
+    std::unique_ptr<std::mutex[]> g_OpenSslLocks;
+
+    void OpenSslLockingCallback(int mode, int type, const char* /*file*/, int /*line*/)
+    {
+        if (mode & CRYPTO_LOCK)
+            g_OpenSslLocks[type].lock();
+        else
+            g_OpenSslLocks[type].unlock();
+    }
+
+#if OPENSSL_VERSION_NUMBER < 0x10000000L
+    unsigned long OpenSslIdCallback()
+    {
+        return static_cast<unsigned long>(pthread_self());
+    }
+#else
+    void OpenSslIdCallback(CRYPTO_THREADID* id)
+    {
+        CRYPTO_THREADID_set_numeric(id, static_cast<unsigned long>(pthread_self()));
+    }
+#endif
+
+    void InitializeOpenSslLocks()
+    {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+        g_OpenSslLocks = std::make_unique<std::mutex[]>(CRYPTO_num_locks());
+        CRYPTO_set_locking_callback(OpenSslLockingCallback);
+#if OPENSSL_VERSION_NUMBER < 0x10000000L
+        CRYPTO_set_id_callback(OpenSslIdCallback);
+#else
+        CRYPTO_THREADID_set_callback(OpenSslIdCallback);
+#endif
+#endif
+    }
+
+    void CleanupOpenSslLocks()
+    {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+        CRYPTO_set_locking_callback(nullptr);
+#if OPENSSL_VERSION_NUMBER < 0x10000000L
+        CRYPTO_set_id_callback(nullptr);
+#else
+        CRYPTO_THREADID_set_callback(nullptr);
+#endif
+        g_OpenSslLocks.reset();
+#endif
+    }
+}
+#endif
+
 using namespace ezhttp;
 
 bool ValidateOptionsId(AMX *amx, OptionsId options_id);
@@ -73,6 +131,9 @@ namespace
 
 void CreateModules()
 {
+#ifdef LINUX
+    InitializeOpenSslLocks();
+#endif
     ezhttp::trace::Initialize(MF_BuildPathname("addons/amxmodx/logs/ezhttp_trace.log"));
     RefreshTraceLogSetting();
     ezhttp::trace::Writef("module", "CreateModules begin");
@@ -89,6 +150,9 @@ void DestroyModules()
     g_JsonManager.reset();
     ezhttp::trace::Writef("module", "DestroyModules done");
     ezhttp::trace::Shutdown();
+#ifdef LINUX
+    CleanupOpenSslLocks();
+#endif
 }
 
 // native EzHttpOptions:ezhttp_create_options(bool:auto_destroy = true);

@@ -374,6 +374,8 @@ void EasyHttp::SetSessionCommonOptions(cpr::Session &session, const std::shared_
 
     if (options.connect_timeout)
         session.SetConnectTimeout(*options.connect_timeout);
+
+    curl_easy_setopt(session.GetCurlHolder()->handle, CURLOPT_NOSIGNAL, 1L);
 }
 
 Response EasyHttp::SendRequest(const std::shared_ptr<RequestControl> &request_control, RequestMethod method, const cpr::Url &url, const RequestOptions &options)
@@ -537,6 +539,7 @@ Response EasyHttp::FtpUpload(cpr::Session &session, const std::shared_ptr<Reques
     curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
     curl_easy_setopt(curl, CURLOPT_TRANSFERTEXT, 0L);
     curl_easy_setopt(curl, CURLOPT_FTP_CREATE_MISSING_DIRS, 1L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     if (options.require_secure)
     {
         curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
@@ -598,6 +601,7 @@ Response EasyHttp::FtpDownloadSingle(cpr::Session &session, const std::shared_pt
     CURL *curl = session.GetCurlHolder()->handle;
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_TRANSFERTEXT, 0L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     if (options.require_secure)
     {
         curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
@@ -652,6 +656,7 @@ Response EasyHttp::FtpDownloadWildcard(cpr::Session &session, const std::shared_
     curl_easy_setopt(curl, CURLOPT_CHUNK_BGN_FUNCTION, OnFtpWildcardChunkBegin);
     curl_easy_setopt(curl, CURLOPT_CHUNK_END_FUNCTION, OnFtpWildcardChunkEnd);
     curl_easy_setopt(curl, CURLOPT_CHUNK_DATA, &context);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     if (options.require_secure)
     {
         curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
