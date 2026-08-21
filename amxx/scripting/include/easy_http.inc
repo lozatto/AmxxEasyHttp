@@ -122,16 +122,16 @@ native ezhttp_option_set_body(EzHttpOptions:options_id, const body[]);
 /**
  * Copies serialized string to the requests body.
  *
- * @note                    Needs to be freed using ezjson_free() native.
+ * @note                    If using ezjson_move(), the C++ module will consume the JSON handle and free it.
  *
  * @param options_id        Options identifier created via ezhttp_create_options().  
- * @param json              EzJSON handle.
+ * @param json              EzJSONOwnership tag (use ezjson_move() or ezjson_copy()).
  * @param pretty            True to format pretty JSON string, false to not.
  *
  * @return                  True if serialization was successful, false otherwise.
  * @error                   If passed handle is not a valid value. If passed options_id is not exists.
  */
-native bool:ezhttp_option_set_body_from_json(EzHttpOptions:options_id, EzJSON:json, bool:pretty = false);
+native bool:ezhttp_option_set_body_from_json(EzHttpOptions:options_id, EzJSONOwnership:json, bool:pretty = false);
 
 /**
   * Appends a body to the HTTP request.

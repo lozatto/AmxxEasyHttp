@@ -211,7 +211,7 @@ cell AMX_NATIVE_CALL ezhttp_option_set_body(AMX *amx, cell *params)
     return 0;
 }
 
-// native bool:ezhttp_option_set_body_from_json(EzHttpOptions:options_id, EzJSON:json, bool:pretty = false);
+// native bool:ezhttp_option_set_body_from_json(EzHttpOptions:options_id, EzJSONOwnership:json, bool:pretty = false);
 cell AMX_NATIVE_CALL ezhttp_option_set_body_from_json(AMX *amx, cell *params)
 {
     auto options_id = (OptionsId)params[1];
@@ -229,10 +229,14 @@ cell AMX_NATIVE_CALL ezhttp_option_set_body_from_json(AMX *amx, cell *params)
 
     char *json_str = g_JsonManager->SerialToString(json_handle, pretty);
     if (json_str == nullptr)
+    {
+        g_JsonManager->Free(json_handle);
         return 0;
+    }
 
     g_EasyHttpModule->GetOptions(options_id).options_builder.SetBody(json_str);
     g_JsonManager->FreeString(json_str);
+    g_JsonManager->Free(json_handle);
 
     return 1;
 }

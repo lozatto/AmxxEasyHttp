@@ -204,6 +204,32 @@ native EzJSON:ezjson_deep_copy(const EzJSON:value);
 native bool:ezjson_free(&EzJSON:handle);
 
 /**
+ * Transfers ownership of a JSON handle. 
+ * The receiving native will consume and free the handle, invalidating it.
+ *
+ * @param handle            EzJSON handle to move
+ *
+ * @return                  EzJSONOwnership tagged handle
+ */
+stock EzJSONOwnership:ezjson_move(EzJSON:handle)
+{
+    return EzJSONOwnership:handle;
+}
+
+/**
+ * Copies a JSON handle and transfers ownership of the copy.
+ * The original handle remains untouched and valid.
+ *
+ * @param handle            EzJSON handle to copy
+ *
+ * @return                  EzJSONOwnership tagged handle
+ */
+stock EzJSONOwnership:ezjson_copy(EzJSON:handle)
+{
+    return EzJSONOwnership:ezjson_deep_copy(handle);
+}
+
+/**
  * Gets string data.
  *
  * @param value             EzJSON handle
