@@ -39,6 +39,7 @@ jobs:
           path: |
             out/bin/Release/**
             out/pdb/Release/**
+            amxx/scripting/include/**
           if-no-files-found: error
           retention-days: 14
 
@@ -111,6 +112,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: easy_http-linux-i386
-          path: out/bin/Release/easy_http_amxx_i386.so
+          path: |
+            out/bin/Release/easy_http_amxx_i386.so
+            amxx/scripting/include/**
           if-no-files-found: error
           retention-days: 14
