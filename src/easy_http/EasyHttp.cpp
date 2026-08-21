@@ -548,6 +548,9 @@ Response EasyHttp::FtpUpload(cpr::Session &session, const std::shared_ptr<Reques
 
     CURLcode curl_result = curl_easy_perform(curl);
     file.close();
+    curl_easy_setopt(curl, CURLOPT_READFUNCTION, nullptr);
+    curl_easy_setopt(curl, CURLOPT_READDATA, nullptr);
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 0L);
 
     Response response(session.Complete(curl_result));
     if (request_control->canceled.load())
@@ -600,6 +603,7 @@ Response EasyHttp::FtpDownloadSingle(cpr::Session &session, const std::shared_pt
 
     CURL *curl = session.GetCurlHolder()->handle;
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 0L);
     curl_easy_setopt(curl, CURLOPT_TRANSFERTEXT, 0L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     if (options.require_secure)
@@ -610,6 +614,8 @@ Response EasyHttp::FtpDownloadSingle(cpr::Session &session, const std::shared_pt
 
     CURLcode curl_result = curl_easy_perform(curl);
     file.close();
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullptr);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, nullptr);
 
     Response response(session.Complete(curl_result));
     if (request_control->canceled.load())
@@ -651,6 +657,7 @@ Response EasyHttp::FtpDownloadWildcard(cpr::Session &session, const std::shared_
 
     CURL *curl = session.GetCurlHolder()->handle;
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 0L);
     curl_easy_setopt(curl, CURLOPT_TRANSFERTEXT, 0L);
     curl_easy_setopt(curl, CURLOPT_WILDCARDMATCH, 1L);
     curl_easy_setopt(curl, CURLOPT_CHUNK_BGN_FUNCTION, OnFtpWildcardChunkBegin);
@@ -669,6 +676,8 @@ Response EasyHttp::FtpDownloadWildcard(cpr::Session &session, const std::shared_
     curl_easy_setopt(curl, CURLOPT_CHUNK_BGN_FUNCTION, nullptr);
     curl_easy_setopt(curl, CURLOPT_CHUNK_END_FUNCTION, nullptr);
     curl_easy_setopt(curl, CURLOPT_CHUNK_DATA, nullptr);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullptr);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, nullptr);
 
     Response response(session.Complete(curl_result));
     if (request_control->canceled.load())

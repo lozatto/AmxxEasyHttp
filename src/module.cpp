@@ -121,7 +121,13 @@ namespace
         if (requested_len <= 0)
             return nullptr;
 
-        std::unique_ptr<int[]> data = std::make_unique<cell[]>(requested_len);
+        if (requested_len > 1024)
+        {
+            MF_LogError(amx, AMX_ERR_NATIVE, "Callback data length %d exceeds maximum limit of 1024 cells", requested_len);
+            return nullptr;
+        }
+
+        std::unique_ptr<cell[]> data = std::make_unique<cell[]>(requested_len);
         MF_CopyAmxMemory(data.get(), MF_GetAmxAddr(amx, params[arg_data]), requested_len);
         data_len = requested_len;
 
@@ -323,9 +329,18 @@ cell AMX_NATIVE_CALL ezhttp_option_set_user_data(AMX *amx, cell *params)
     if (!ValidateOptionsId(amx, options_id))
         return 0;
 
+    if (data_len < 0 || data_len > 1024)
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "User data length %d is invalid (must be between 0 and 1024)", data_len);
+        return 0;
+    }
+
     std::vector<cell> user_data;
-    user_data.resize(data_len);
-    MF_CopyAmxMemory(user_data.data(), data_addr, data_len);
+    if (data_len > 0)
+    {
+        user_data.resize(data_len);
+        MF_CopyAmxMemory(user_data.data(), data_addr, data_len);
+    }
 
     g_EasyHttpModule->GetOptions(options_id).user_data = user_data;
     return 0;
