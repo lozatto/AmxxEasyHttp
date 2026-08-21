@@ -143,10 +143,12 @@ EasyHttp::~EasyHttp()
 
     {
         std::lock_guard lock_guard(pending_requests_mutex_);
+        std::lock_guard lock_guard_completed(completed_requests_mutex_);
         stop_requested_ = true;
     }
 
     pending_requests_cv_.notify_all();
+    completed_requests_cv_.notify_all();
 
     for (auto &worker_thread : worker_threads_)
     {
@@ -205,9 +207,12 @@ void EasyHttp::WorkerLoop()
         bool forgotten = pending_request.request_control->forgotten.load();
         if (!forgotten)
         {
-            std::lock_guard lock_guard(completed_requests_mutex_);
+            std::unique_lock lock_guard(completed_requests_mutex_);
+            completed_requests_cv_.wait(lock_guard, [this]()
+                                        { return stop_requested_ || completed_requests_.size() < 1024; });
+
             forgotten = pending_request.request_control->forgotten.load();
-            if (!forgotten)
+            if (!forgotten && !stop_requested_)
             {
                 completed_requests_.push_back(CompletedRequest{
                     pending_request.request_control,
@@ -232,6 +237,7 @@ bool EasyHttp::TryPopCompletedRequest(CompletedRequest &completed_request)
 
     completed_request = std::move(completed_requests_.front());
     completed_requests_.pop_front();
+    completed_requests_cv_.notify_one();
     return true;
 }
 
@@ -253,6 +259,7 @@ void EasyHttp::DropCompletedRequestsWithoutCallbacks()
         }
 
         completed_requests_.clear();
+        completed_requests_cv_.notify_all();
     }
 
     for (auto &request_control : completed_request_controls)

@@ -43,6 +43,7 @@ namespace ezhttp
         std::deque<PendingRequest> pending_requests_;
 
         std::mutex completed_requests_mutex_;
+        std::condition_variable completed_requests_cv_;
         std::deque<CompletedRequest> completed_requests_;
 
         mutable std::mutex requests_mutex_;
