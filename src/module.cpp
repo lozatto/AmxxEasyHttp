@@ -2,6 +2,7 @@
 #include <memory>
 #include <utility>
 #include <fstream>
+#include <curl/curl.h>
 
 #include <sdk/amxxmodule.h>
 
@@ -140,6 +141,7 @@ void CreateModules()
 #ifdef LINUX
     InitializeOpenSslLocks();
 #endif
+    curl_global_init(CURL_GLOBAL_ALL);
     ezhttp::trace::Initialize(MF_BuildPathname("addons/amxmodx/logs/ezhttp_trace.log"));
     RefreshTraceLogSetting();
     ezhttp::trace::Writef("module", "CreateModules begin");
@@ -156,6 +158,7 @@ void DestroyModules()
     g_JsonManager.reset();
     ezhttp::trace::Writef("module", "DestroyModules done");
     ezhttp::trace::Shutdown();
+    curl_global_cleanup();
 #ifdef LINUX
     CleanupOpenSslLocks();
 #endif
