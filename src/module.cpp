@@ -218,8 +218,16 @@ cell AMX_NATIVE_CALL ezhttp_option_set_body_from_json(AMX *amx, cell *params)
     auto json_handle = (JS_Handle)params[2];
     auto pretty = (bool)params[3];
 
+    // This native takes ownership of the JSON handle. If options_id is invalid,
+    // we must free the JSON handle here before returning to prevent a memory leak,
+    // as the calling script expects the native to have consumed it.
     if (!ValidateOptionsId(amx, options_id))
+    {
+        if (g_JsonManager->IsValidHandle(json_handle))
+            g_JsonManager->Free(json_handle);
+
         return 0;
+    }
 
     if (!g_JsonManager->IsValidHandle(json_handle))
     {
