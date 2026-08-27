@@ -107,7 +107,7 @@ namespace
 
     void RefreshTraceLogSetting()
     {
-        ezhttp::trace::SetEnabled(CVAR_GET_FLOAT("ezhttp_trace_log") != 0.0f);
+        ezhttp::trace::SetEnabled(cvar_ezhttp_trace.value != 0.0f);
     }
 
     std::unique_ptr<cell[]> ReadCallbackData(AMX *amx, cell *params, int arg_data, int arg_data_len, int &data_len)
