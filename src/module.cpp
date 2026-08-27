@@ -2,6 +2,7 @@
 #include <memory>
 #include <utility>
 #include <fstream>
+#include <curl/curl.h>
 
 #include <sdk/amxxmodule.h>
 
@@ -12,6 +13,64 @@
 #include "utils/string_utils.h"
 #include "utils/amxx_utils.h"
 #include "utils/TraceLog.h"
+
+#ifdef LINUX
+#include <openssl/crypto.h>
+#include <mutex>
+#include <memory>
+#include <vector>
+
+namespace
+{
+    std::unique_ptr<std::mutex[]> g_OpenSslLocks;
+
+    void OpenSslLockingCallback(int mode, int type, const char* /*file*/, int /*line*/)
+    {
+        if (mode & CRYPTO_LOCK)
+            g_OpenSslLocks[type].lock();
+        else
+            g_OpenSslLocks[type].unlock();
+    }
+
+#if OPENSSL_VERSION_NUMBER < 0x10000000L
+    unsigned long OpenSslIdCallback()
+    {
+        return static_cast<unsigned long>(pthread_self());
+    }
+#else
+    void OpenSslIdCallback(CRYPTO_THREADID* id)
+    {
+        CRYPTO_THREADID_set_numeric(id, static_cast<unsigned long>(pthread_self()));
+    }
+#endif
+
+    void InitializeOpenSslLocks()
+    {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+        g_OpenSslLocks = std::make_unique<std::mutex[]>(CRYPTO_num_locks());
+        CRYPTO_set_locking_callback(OpenSslLockingCallback);
+#if OPENSSL_VERSION_NUMBER < 0x10000000L
+        CRYPTO_set_id_callback(OpenSslIdCallback);
+#else
+        CRYPTO_THREADID_set_callback(OpenSslIdCallback);
+#endif
+#endif
+    }
+
+    void CleanupOpenSslLocks()
+    {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+        CRYPTO_set_locking_callback(nullptr);
+#if OPENSSL_VERSION_NUMBER < 0x10000000L
+        CRYPTO_set_id_callback(nullptr);
+#else
+        CRYPTO_THREADID_set_callback(nullptr);
+#endif
+        g_OpenSslLocks.reset();
+#endif
+    }
+}
+#endif
 
 using namespace ezhttp;
 
@@ -48,7 +107,7 @@ namespace
 
     void RefreshTraceLogSetting()
     {
-        ezhttp::trace::SetEnabled(CVAR_GET_FLOAT("ezhttp_trace_log") != 0.0f);
+        ezhttp::trace::SetEnabled(cvar_ezhttp_trace.value != 0.0f);
     }
 
     std::unique_ptr<cell[]> ReadCallbackData(AMX *amx, cell *params, int arg_data, int arg_data_len, int &data_len)
@@ -63,7 +122,13 @@ namespace
         if (requested_len <= 0)
             return nullptr;
 
-        std::unique_ptr<int[]> data = std::make_unique<cell[]>(requested_len);
+        if (requested_len > 1024)
+        {
+            MF_LogError(amx, AMX_ERR_NATIVE, "Callback data length %d exceeds maximum limit of 1024 cells", requested_len);
+            return nullptr;
+        }
+
+        std::unique_ptr<cell[]> data = std::make_unique<cell[]>(requested_len);
         MF_CopyAmxMemory(data.get(), MF_GetAmxAddr(amx, params[arg_data]), requested_len);
         data_len = requested_len;
 
@@ -73,6 +138,10 @@ namespace
 
 void CreateModules()
 {
+#ifdef LINUX
+    InitializeOpenSslLocks();
+#endif
+    curl_global_init(CURL_GLOBAL_ALL);
     ezhttp::trace::Initialize(MF_BuildPathname("addons/amxmodx/logs/ezhttp_trace.log"));
     RefreshTraceLogSetting();
     ezhttp::trace::Writef("module", "CreateModules begin");
@@ -89,6 +158,10 @@ void DestroyModules()
     g_JsonManager.reset();
     ezhttp::trace::Writef("module", "DestroyModules done");
     ezhttp::trace::Shutdown();
+    curl_global_cleanup();
+#ifdef LINUX
+    CleanupOpenSslLocks();
+#endif
 }
 
 // native EzHttpOptions:ezhttp_create_options(bool:auto_destroy = true);
@@ -141,15 +214,23 @@ cell AMX_NATIVE_CALL ezhttp_option_set_body(AMX *amx, cell *params)
     return 0;
 }
 
-// native bool:ezhttp_option_set_body_from_json(EzHttpOptions:options_id, EzJSON:json, bool:pretty = false);
+// native bool:ezhttp_option_set_body_from_json(EzHttpOptions:options_id, EzJSONOwnership:json, bool:pretty = false);
 cell AMX_NATIVE_CALL ezhttp_option_set_body_from_json(AMX *amx, cell *params)
 {
     auto options_id = (OptionsId)params[1];
     auto json_handle = (JS_Handle)params[2];
     auto pretty = (bool)params[3];
 
+    // This native takes ownership of the JSON handle. If options_id is invalid,
+    // we must free the JSON handle here before returning to prevent a memory leak,
+    // as the calling script expects the native to have consumed it.
     if (!ValidateOptionsId(amx, options_id))
+    {
+        if (g_JsonManager->IsValidHandle(json_handle))
+            g_JsonManager->Free(json_handle);
+
         return 0;
+    }
 
     if (!g_JsonManager->IsValidHandle(json_handle))
     {
@@ -159,10 +240,14 @@ cell AMX_NATIVE_CALL ezhttp_option_set_body_from_json(AMX *amx, cell *params)
 
     char *json_str = g_JsonManager->SerialToString(json_handle, pretty);
     if (json_str == nullptr)
+    {
+        g_JsonManager->Free(json_handle);
         return 0;
+    }
 
     g_EasyHttpModule->GetOptions(options_id).options_builder.SetBody(json_str);
     g_JsonManager->FreeString(json_str);
+    g_JsonManager->Free(json_handle);
 
     return 1;
 }
@@ -259,9 +344,18 @@ cell AMX_NATIVE_CALL ezhttp_option_set_user_data(AMX *amx, cell *params)
     if (!ValidateOptionsId(amx, options_id))
         return 0;
 
+    if (data_len < 0 || data_len > 1024)
+    {
+        MF_LogError(amx, AMX_ERR_NATIVE, "User data length %d is invalid (must be between 0 and 1024)", data_len);
+        return 0;
+    }
+
     std::vector<cell> user_data;
-    user_data.resize(data_len);
-    MF_CopyAmxMemory(user_data.data(), data_addr, data_len);
+    if (data_len > 0)
+    {
+        user_data.resize(data_len);
+        MF_CopyAmxMemory(user_data.data(), data_addr, data_len);
+    }
 
     g_EasyHttpModule->GetOptions(options_id).user_data = user_data;
     return 0;

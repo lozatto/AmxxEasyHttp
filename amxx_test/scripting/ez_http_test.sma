@@ -622,8 +622,7 @@ START_ASYNC_TEST(test_post_body_json)
     ezjson_object_set_string(json_root, "StringField", "TestValue");
     ezjson_object_set_number(json_root, "NumberField", 21);
 
-    ezhttp_option_set_body_from_json(opt, json_root);
-    ezjson_free(json_root);
+    ezhttp_option_set_body_from_json(opt, ezjson_move(json_root));
     ezhttp_option_set_header(opt, "Content-Type", "application/json");
 
     EZHTTP_OPTION_SET_TEST_DATA(opt)

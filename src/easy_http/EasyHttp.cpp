@@ -143,10 +143,12 @@ EasyHttp::~EasyHttp()
 
     {
         std::lock_guard lock_guard(pending_requests_mutex_);
+        std::lock_guard lock_guard_completed(completed_requests_mutex_);
         stop_requested_ = true;
     }
 
     pending_requests_cv_.notify_all();
+    completed_requests_cv_.notify_all();
 
     for (auto &worker_thread : worker_threads_)
     {
@@ -205,9 +207,12 @@ void EasyHttp::WorkerLoop()
         bool forgotten = pending_request.request_control->forgotten.load();
         if (!forgotten)
         {
-            std::lock_guard lock_guard(completed_requests_mutex_);
+            std::unique_lock lock_guard(completed_requests_mutex_);
+            completed_requests_cv_.wait(lock_guard, [this]()
+                                        { return stop_requested_ || completed_requests_.size() < 1024; });
+
             forgotten = pending_request.request_control->forgotten.load();
-            if (!forgotten)
+            if (!forgotten && !stop_requested_)
             {
                 completed_requests_.push_back(CompletedRequest{
                     pending_request.request_control,
@@ -232,6 +237,7 @@ bool EasyHttp::TryPopCompletedRequest(CompletedRequest &completed_request)
 
     completed_request = std::move(completed_requests_.front());
     completed_requests_.pop_front();
+    completed_requests_cv_.notify_one();
     return true;
 }
 
@@ -253,6 +259,7 @@ void EasyHttp::DropCompletedRequestsWithoutCallbacks()
         }
 
         completed_requests_.clear();
+        completed_requests_cv_.notify_all();
     }
 
     for (auto &request_control : completed_request_controls)
@@ -374,6 +381,8 @@ void EasyHttp::SetSessionCommonOptions(cpr::Session &session, const std::shared_
 
     if (options.connect_timeout)
         session.SetConnectTimeout(*options.connect_timeout);
+
+    curl_easy_setopt(session.GetCurlHolder()->handle, CURLOPT_NOSIGNAL, 1L);
 }
 
 Response EasyHttp::SendRequest(const std::shared_ptr<RequestControl> &request_control, RequestMethod method, const cpr::Url &url, const RequestOptions &options)
@@ -537,6 +546,7 @@ Response EasyHttp::FtpUpload(cpr::Session &session, const std::shared_ptr<Reques
     curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
     curl_easy_setopt(curl, CURLOPT_TRANSFERTEXT, 0L);
     curl_easy_setopt(curl, CURLOPT_FTP_CREATE_MISSING_DIRS, 1L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     if (options.require_secure)
     {
         curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
@@ -545,6 +555,9 @@ Response EasyHttp::FtpUpload(cpr::Session &session, const std::shared_ptr<Reques
 
     CURLcode curl_result = curl_easy_perform(curl);
     file.close();
+    curl_easy_setopt(curl, CURLOPT_READFUNCTION, nullptr);
+    curl_easy_setopt(curl, CURLOPT_READDATA, nullptr);
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 0L);
 
     Response response(session.Complete(curl_result));
     if (request_control->canceled.load())
@@ -597,7 +610,9 @@ Response EasyHttp::FtpDownloadSingle(cpr::Session &session, const std::shared_pt
 
     CURL *curl = session.GetCurlHolder()->handle;
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 0L);
     curl_easy_setopt(curl, CURLOPT_TRANSFERTEXT, 0L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     if (options.require_secure)
     {
         curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
@@ -606,6 +621,8 @@ Response EasyHttp::FtpDownloadSingle(cpr::Session &session, const std::shared_pt
 
     CURLcode curl_result = curl_easy_perform(curl);
     file.close();
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullptr);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, nullptr);
 
     Response response(session.Complete(curl_result));
     if (request_control->canceled.load())
@@ -647,11 +664,13 @@ Response EasyHttp::FtpDownloadWildcard(cpr::Session &session, const std::shared_
 
     CURL *curl = session.GetCurlHolder()->handle;
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 0L);
     curl_easy_setopt(curl, CURLOPT_TRANSFERTEXT, 0L);
     curl_easy_setopt(curl, CURLOPT_WILDCARDMATCH, 1L);
     curl_easy_setopt(curl, CURLOPT_CHUNK_BGN_FUNCTION, OnFtpWildcardChunkBegin);
     curl_easy_setopt(curl, CURLOPT_CHUNK_END_FUNCTION, OnFtpWildcardChunkEnd);
     curl_easy_setopt(curl, CURLOPT_CHUNK_DATA, &context);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     if (options.require_secure)
     {
         curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
@@ -664,6 +683,8 @@ Response EasyHttp::FtpDownloadWildcard(cpr::Session &session, const std::shared_
     curl_easy_setopt(curl, CURLOPT_CHUNK_BGN_FUNCTION, nullptr);
     curl_easy_setopt(curl, CURLOPT_CHUNK_END_FUNCTION, nullptr);
     curl_easy_setopt(curl, CURLOPT_CHUNK_DATA, nullptr);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullptr);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, nullptr);
 
     Response response(session.Complete(curl_result));
     if (request_control->canceled.load())

@@ -5,6 +5,10 @@ find_package(Threads REQUIRED)
 find_package(HLSDK REQUIRED)
 find_package(metamod REQUIRED)
 
+if (UNIX)
+    find_package(OpenSSL REQUIRED)
+endif()
+
 if (AMXX_EASY_HTTP_BUILD_STATIC)
     set(LIBRARY_BUILD_TYPE STATIC)
     set(TARGET_LIBRARIES_SCOPE PUBLIC)
@@ -70,6 +74,10 @@ add_library(easy_http::easy_http ALIAS ${TARGET_NAME})
 target_include_directories(${TARGET_NAME} PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+if (UNIX)
+    target_include_directories(${TARGET_NAME} PRIVATE ${OPENSSL_INCLUDE_DIR})
+    target_link_libraries(${TARGET_NAME} PRIVATE OpenSSL::Crypto)
+endif()
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
         NOMINMAX

@@ -10,6 +10,7 @@ namespace ezhttp
 
         CURLUcode rc;
         char* host = nullptr;
+        char* scheme = nullptr;
 
         rc = curl_url_set(curl_url_, CURLUPART_URL, url.c_str(), 0);
         if (rc != CURLUE_OK)
@@ -19,7 +20,20 @@ namespace ezhttp
         if (rc != CURLUE_OK)
             return "";
 
-        return { host };
+        std::string result;
+        rc = curl_url_get(curl_url_, CURLUPART_SCHEME, &scheme, 0);
+        if (rc == CURLUE_OK && scheme)
+        {
+            result = std::string(scheme) + "://" + host;
+            curl_free(scheme);
+        }
+        else
+        {
+            result = host;
+        }
+
+        curl_free(host);
+        return result;
     }
 
     void UrlUtils::InitializeIfNeeded()

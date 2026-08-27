@@ -259,12 +259,14 @@ void EasyHttpModule::ShutdownWithoutCallbacks()
 
         if (terminating_ez)
         {
+            terminating_ez->CancelAllRequests();
             terminating_ez->ForgetAllRequests();
             forgotten_easy_http_.emplace_back(std::move(terminating_ez));
         }
 
         if (forgettable_ez)
         {
+            forgettable_ez->CancelAllRequests();
             forgettable_ez->ForgetAllRequests();
             forgotten_easy_http_.emplace_back(std::move(forgettable_ez));
         }

@@ -32,13 +32,19 @@ jobs:
       - name: Build
         run: cmake --build cmake-build-win32 --target easy_http --config Release --parallel
 
+      - name: Prepare artifact files
+        shell: bash
+        run: |
+          mkdir -p stage/scripting/include
+          cp out/bin/Release/easy_http_amxx.dll stage/
+          cp out/pdb/Release/easy_http_amxx.pdb stage/
+          cp amxx/scripting/include/easy_http.inc amxx/scripting/include/easy_http_json.inc stage/scripting/include/
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: easy_http-windows-win32
-          path: |
-            out/bin/Release/**
-            out/pdb/Release/**
+          path: stage/**
           if-no-files-found: error
           retention-days: 14
 
@@ -107,10 +113,16 @@ jobs:
             cmake --build . --target easy_http -j$(nproc)
           '
 
+      - name: Prepare artifact files
+        run: |
+          mkdir -p stage/scripting/include
+          cp out/bin/Release/easy_http_amxx_i386.so stage/
+          cp amxx/scripting/include/easy_http.inc amxx/scripting/include/easy_http_json.inc stage/scripting/include/
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: easy_http-linux-i386
-          path: out/bin/Release/easy_http_amxx_i386.so
+          path: stage/**
           if-no-files-found: error
           retention-days: 14
